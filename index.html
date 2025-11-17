@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>全身鏡反射定律模擬器 (教學最終版)</title>
+    <title>全身鏡反射定律模擬器 (角度最終修正版)</title>
     <style>
         :root {
             --primary-color: #1a237e;
@@ -88,10 +88,10 @@
         .floor { stroke: #5d4037; stroke-width: 4; }
         .text-label { font-size: 21px; fill: #333; font-weight: bold; }
         
-        /* New styles for angles and normals */
+        /* Styles for angles and normals */
         .normal-line { stroke: #424242; stroke-width: 1.5; stroke-dasharray: 3, 3; }
         .angle-arc { stroke: #000000; stroke-width: 1; fill: none; }
-        .angle-text { font-size: 12px; fill: #000000; text-anchor: middle; dominant-baseline: middle; }
+        .angle-text { font-size: 12px; fill: #000000; }
 
         /* Mobile Responsiveness */
         @media (max-width: 768px) {
@@ -171,20 +171,12 @@
                 <path id="ray-bottom" class="ray" />
                 <line id="mirror" class="mirror" />
 
-                <!-- Normals and Angles -->
-                <g id="top-angle-group">
-                    <line class="normal-line" />
-                    <path class="angle-arc" />
-                    <path class="angle-arc" />
-                    <text class="angle-text"></text>
-                    <text class="angle-text"></text>
-                </g>
                 <g id="bottom-angle-group">
                     <line class="normal-line" />
-                    <path class="angle-arc" />
-                    <path class="angle-arc" />
-                    <text class="angle-text"></text>
-                    <text class="angle-text"></text>
+                    <path id="bottom-incident-arc" class="angle-arc" />
+                    <path id="bottom-reflection-arc" class="angle-arc" />
+                    <text id="bottom-incident-text" class="angle-text"></text>
+                    <text id="bottom-reflection-text" class="angle-text"></text>
                 </g>
 
                 <text id="person-label" x="0" y="0" class="text-label" text-anchor="middle">人</text>
@@ -192,33 +184,49 @@
             `;
         }
 
-        // Helper function to draw angle arcs and text
-        function drawAngleArc(elements, center, angleRad, isIncidence, isTop) {
-            const [arcEl, textEl] = elements;
-            const arcRadius = 35;
-            const textRadius = 20;
+        function drawAngle(arcEl, textEl, center, angleRad, isIncidence) {
+            const arcRadius = 40;
             const angleDeg = angleRad * 180 / Math.PI;
 
-            let startAngle, endAngle;
+            let startAngle, endAngle, sweepFlag;
+            
+            // The normal pointing towards the person (right) is our 0-degree reference.
+            const normalAngle = 0;
+
             if (isIncidence) {
-                startAngle = Math.PI; // From normal (left)
-                endAngle = isTop ? Math.PI - angleRad : Math.PI + angleRad;
+                // Incident angle: from normal (0) to incident ray (-angleRad).
+                startAngle = normalAngle;
+                endAngle = -angleRad;
+                sweepFlag = 1; // Clockwise sweep from 0 to a negative angle.
             } else { // Reflection
-                startAngle = isTop ? angleRad : -angleRad;
-                endAngle = 0; // To normal (right)
+                // Reflection angle: from normal (0) to reflected ray (+angleRad).
+                startAngle = normalAngle;
+                endAngle = angleRad;
+                sweepFlag = 0; // Counter-clockwise sweep from 0 to a positive angle.
             }
-            
-            const start = { x: center.x + arcRadius * Math.cos(startAngle), y: center.y + arcRadius * Math.sin(startAngle) };
-            const end = { x: center.x + arcRadius * Math.cos(endAngle), y: center.y + arcRadius * Math.sin(endAngle) };
-            
-            const d = `M ${start.x} ${start.y} A ${arcRadius} ${arcRadius} 0 0 ${isIncidence ? 1 : 0} ${end.x} ${end.y}`;
+
+            const start = { x: center.x + arcRadius * Math.cos(startAngle), y: center.y - arcRadius * Math.sin(startAngle) };
+            const end = { x: center.x + arcRadius * Math.cos(endAngle), y: center.y - arcRadius * Math.sin(endAngle) };
+
+            const d = `M ${start.x} ${start.y} A ${arcRadius} ${arcRadius} 0 0 ${sweepFlag} ${end.x} ${end.y}`;
             arcEl.setAttribute('d', d);
 
-            const midAngle = (startAngle + endAngle) / 2;
-            textEl.setAttribute('x', center.x + textRadius * Math.cos(midAngle));
-            textEl.setAttribute('y', center.y + textRadius * Math.sin(midAngle));
+            // Position text stacked vertically to the right of the reflection point.
+            const textX = center.x + 10;
+            let textY = center.y;
+
+            if (isIncidence) {
+                textY += 15; // Move incident text down
+            } else {
+                textY -= 10; // Move reflection text up
+            }
+            
+            textEl.setAttribute('x', textX);
+            textEl.setAttribute('y', textY);
+            textEl.setAttribute('text-anchor', 'start');
             textEl.textContent = `${angleDeg.toFixed(1)}°`;
         }
+
 
         function update() {
             const personHeight = parseInt(personHeightSlider.value);
@@ -244,8 +252,6 @@
 
             const scale = (SVG_HEIGHT - 50) / 220;
 
-            // Update main elements
-            document.getElementById('person').setAttribute('d', `M${personX},${SVG_HEIGHT - personHeight * scale} L${personX},${SVG_HEIGHT}`);
             document.getElementById('person').setAttribute('x1', personX);
             document.getElementById('person').setAttribute('y1', SVG_HEIGHT - personHeight * scale);
             document.getElementById('person').setAttribute('x2', personX);
@@ -261,13 +267,11 @@
             document.getElementById('virtual-person').setAttribute('x2', virtualPersonX);
             document.getElementById('virtual-person').setAttribute('y2', SVG_HEIGHT);
             
-            // Update rays
             document.getElementById('ray-top').setAttribute('d', `M ${personX},${SVG_HEIGHT - personHeight * scale} L ${MIRROR_X},${SVG_HEIGHT - topReflectionY * scale} L ${personX},${SVG_HEIGHT - eyeLevel * scale}`);
             document.getElementById('ray-bottom').setAttribute('d', `M ${personX},${SVG_HEIGHT} L ${MIRROR_X},${SVG_HEIGHT - bottomReflectionY * scale} L ${personX},${SVG_HEIGHT - eyeLevel * scale}`);
             document.getElementById('ray-top-virtual').setAttribute('d', `M ${MIRROR_X},${SVG_HEIGHT - topReflectionY * scale} L ${virtualPersonX},${SVG_HEIGHT - personHeight * scale}`);
             document.getElementById('ray-bottom-virtual').setAttribute('d', `M ${MIRROR_X},${SVG_HEIGHT - bottomReflectionY * scale} L ${virtualPersonX},${SVG_HEIGHT}`);
 
-            // Update ray colors
             const canSeeTop = topReflectionY <= mirrorTop && topReflectionY >= mirrorBottom;
             const canSeeBottom = bottomReflectionY <= mirrorTop && bottomReflectionY >= mirrorBottom;
             const topRayClass = canSeeTop ? 'ray-top-hit' : 'ray-miss';
@@ -275,7 +279,6 @@
             ['ray-top', 'ray-top-virtual'].forEach(id => document.getElementById(id).setAttribute('class', id.includes('virtual') ? `ray-virtual ${topRayClass}` : `ray ${topRayClass}`));
             ['ray-bottom', 'ray-bottom-virtual'].forEach(id => document.getElementById(id).setAttribute('class', id.includes('virtual') ? `ray-virtual ${bottomRayClass}` : `ray ${bottomRayClass}`));
 
-            // Update results text
             if (canSeeTop && canSeeBottom) {
                 canSeeFullBodyText.textContent = "✔️ 當前設置可以看到全身！";
                 canSeeFullBodyText.className = 'success';
@@ -289,31 +292,26 @@
             idealMirrorSizeText.innerHTML = `理論上，所需鏡子最小尺寸為: <strong>${idealSize.toFixed(1)} cm</strong> (身高的一半)。`;
             idealPositionText.innerHTML = `理論上，鏡子底部最佳離地高度為: <strong>${idealPosition.toFixed(1)} cm</strong> (眼睛高度的一半)。`;
 
-            // --- Calculate and Draw Angles ---
-            const topAngleGroup = document.getElementById('top-angle-group');
-            const bottomAngleGroup = document.getElementById('bottom-angle-group');
-
-            // Top reflection point
-            const topRefPoint = { x: MIRROR_X, y: SVG_HEIGHT - topReflectionY * scale };
-            const angleTopRad = Math.atan((personHeight - topReflectionY) * scale / distance);
-            topAngleGroup.querySelector('.normal-line').setAttribute('x1', MIRROR_X - 60);
-            topAngleGroup.querySelector('.normal-line').setAttribute('y1', topRefPoint.y);
-            topAngleGroup.querySelector('.normal-line').setAttribute('x2', MIRROR_X + 60);
-            topAngleGroup.querySelector('.normal-line').setAttribute('y2', topRefPoint.y);
-            drawAngleArc([topAngleGroup.children[1], topAngleGroup.children[3]], topRefPoint, angleTopRad, true, true);
-            drawAngleArc([topAngleGroup.children[2], topAngleGroup.children[4]], topRefPoint, angleTopRad, false, true);
-            
-            // Bottom reflection point
             const bottomRefPoint = { x: MIRROR_X, y: SVG_HEIGHT - bottomReflectionY * scale };
             const angleBottomRad = Math.atan(bottomReflectionY * scale / distance);
-            bottomAngleGroup.querySelector('.normal-line').setAttribute('x1', MIRROR_X - 60);
-            bottomAngleGroup.querySelector('.normal-line').setAttribute('y1', bottomRefPoint.y);
-            bottomAngleGroup.querySelector('.normal-line').setAttribute('x2', MIRROR_X + 60);
-            bottomAngleGroup.querySelector('.normal-line').setAttribute('y2', bottomRefPoint.y);
-            drawAngleArc([bottomAngleGroup.children[1], bottomAngleGroup.children[3]], bottomRefPoint, angleBottomRad, true, false);
-            drawAngleArc([bottomAngleGroup.children[2], bottomAngleGroup.children[4]], bottomRefPoint, angleBottomRad, false, false);
             
-            // Update labels
+            const normalLine = document.querySelector('#bottom-angle-group .normal-line');
+            normalLine.setAttribute('x1', MIRROR_X - 80);
+            normalLine.setAttribute('y1', bottomRefPoint.y);
+            normalLine.setAttribute('x2', MIRROR_X + 80);
+            normalLine.setAttribute('y2', bottomRefPoint.y);
+
+            drawAngle(
+                document.getElementById('bottom-incident-arc'), 
+                document.getElementById('bottom-incident-text'), 
+                bottomRefPoint, angleBottomRad, true
+            );
+            drawAngle(
+                document.getElementById('bottom-reflection-arc'), 
+                document.getElementById('bottom-reflection-text'), 
+                bottomRefPoint, angleBottomRad, false
+            );
+            
             document.getElementById('person-label').setAttribute('x', personX);
             document.getElementById('person-label').setAttribute('y', SVG_HEIGHT - personHeight * scale - 15);
             document.getElementById('mirror-label').setAttribute('x', MIRROR_X);
