@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全身鏡反射定律模擬器 (教學最終版)</title>
+    <style>
+        :root {
+            --primary-color: #1a237e;
+            --background-color: #f0f2f5;
+            --panel-background: #ffffff;
+            --text-color: #333;
+            --success-color: #2e7d32;
+            --failure-color: #c62828;
+            --mirror-color: #00acc1;
+            --person-color: #1565c0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+        }
+        .main-container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        h1 {
+            color: var(--primary-color);
+            text-align: center;
+        }
+        .visualization {
+            width: 100%;
+            background-color: var(--panel-background);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .bottom-panels {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            width: 100%;
+        }
+        .controls, .results {
+            background-color: var(--panel-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex: 1;
+            box-sizing: border-box;
+        }
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; margin-bottom: 8px; font-weight: 500; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        #results h2, .controls h2 { margin-top: 0; color: var(--primary-color); }
+        #results p { margin: 8px 0; font-size: 1.1em; line-height: 1.5; }
+        .success { color: var(--success-color); font-weight: bold; }
+        .failure { color: var(--failure-color); font-weight: bold; }
+        
+        svg {
+            width: 100%;
+            height: auto;
+            border: 1px solid #ccc;
+            background-image:
+                linear-gradient(to right, #e0e0e0 1px, transparent 1px),
+                linear-gradient(to bottom, #e0e0e0 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+        /* SVG Elements Styling */
+        .person { stroke: var(--person-color); stroke-width: 8; }
+        .eye { fill: var(--person-color); }
+        .mirror { stroke: var(--mirror-color); stroke-width: 10; stroke-linecap: round; }
+        .ray { stroke-dasharray: 5, 5; fill: none; stroke-width: 3; }
+        .ray-virtual { fill: none; stroke-width: 3; stroke-dasharray: 8, 8; stroke-opacity: 0.6; }
+        .ray-top-hit { stroke: #ffab00; }
+        .ray-bottom-hit { stroke: #76ff03; }
+        .ray-miss { stroke: var(--failure-color); }
+        .virtual-person { stroke: #757575; stroke-width: 4; stroke-dasharray: 5,5; }
+        .floor { stroke: #5d4037; stroke-width: 4; }
+        .text-label { font-size: 21px; fill: #333; font-weight: bold; }
+        
+        /* New styles for angles and normals */
+        .normal-line { stroke: #424242; stroke-width: 1.5; stroke-dasharray: 3, 3; }
+        .angle-arc { stroke: #000000; stroke-width: 1; fill: none; }
+        .angle-text { font-size: 12px; fill: #000000; text-anchor: middle; dominant-baseline: middle; }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            body { padding: 5px; }
+            .main-container { gap: 10px; }
+            .bottom-panels { flex-direction: column; }
+            h1 { font-size: 1.5em; }
+            .controls, .results { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <h1>全身鏡反射定律模擬器</h1>
+        <div class="visualization">
+            <svg id="simulation-svg" viewBox="0 0 1200 600"></svg>
+        </div>
+        <div class="bottom-panels">
+            <div class="controls">
+                <h2>調整參數</h2>
+                <div class="control-group">
+                    <label for="personHeight">人的身高: <span id="personHeightValue">170</span> cm</label>
+                    <input type="range" id="personHeight" min="100" max="200" value="170">
+                </div>
+                <div class="control-group">
+                    <label for="distance">與鏡子的距離: <span id="distanceValue">200</span> cm</label>
+                    <input type="range" id="distance" min="50" max="500" value="200">
+                </div>
+                <div class="control-group">
+                    <label for="mirrorSize">鏡子的大小: <span id="mirrorSizeValue">85</span> cm</label>
+                    <input type="range" id="mirrorSize" min="50" max="150" value="85">
+                </div>
+                <div class="control-group">
+                    <label for="mirrorPosition">鏡子底部離地高度: <span id="mirrorPositionValue">77</span> cm</label>
+                    <input type="range" id="mirrorPosition" min="0" max="150" value="77">
+                </div>
+            </div>
+            <div class="results" id="results">
+                <h2>分析結果</h2>
+                <p id="canSeeFullBody"></p>
+                <p id="idealMirrorSize"></p>
+                <p id="idealMirrorPosition"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const svg = document.getElementById('simulation-svg');
+        const personHeightSlider = document.getElementById('personHeight');
+        const distanceSlider = document.getElementById('distance');
+        const mirrorSizeSlider = document.getElementById('mirrorSize');
+        const mirrorPositionSlider = document.getElementById('mirrorPosition');
+
+        const personHeightValue = document.getElementById('personHeightValue');
+        const distanceValue = document.getElementById('distanceValue');
+        const mirrorSizeValue = document.getElementById('mirrorSizeValue');
+        const mirrorPositionValue = document.getElementById('mirrorPositionValue');
+
+        const canSeeFullBodyText = document.getElementById('canSeeFullBody');
+        const idealMirrorSizeText = document.getElementById('idealMirrorSize');
+        const idealPositionText = document.getElementById('idealMirrorPosition');
+        
+        const EYE_TO_TOP_CM = 15;
+        const SVG_HEIGHT = 600;
+        const MIRROR_X = 700;
+
+        function createElements() {
+            svg.innerHTML = `
+                <line id="floor" x1="0" y1="${SVG_HEIGHT}" x2="1200" y2="${SVG_HEIGHT}" class="floor" />
+                <line id="virtual-person" class="virtual-person" />
+                <path id="ray-top-virtual" class="ray-virtual" />
+                <path id="ray-bottom-virtual" class="ray-virtual" />
+                
+                <line id="person" class="person" />
+                <circle id="eye" r="5" class="eye" />
+                <path id="ray-top" class="ray" />
+                <path id="ray-bottom" class="ray" />
+                <line id="mirror" class="mirror" />
+
+                <!-- Normals and Angles -->
+                <g id="top-angle-group">
+                    <line class="normal-line" />
+                    <path class="angle-arc" />
+                    <path class="angle-arc" />
+                    <text class="angle-text"></text>
+                    <text class="angle-text"></text>
+                </g>
+                <g id="bottom-angle-group">
+                    <line class="normal-line" />
+                    <path class="angle-arc" />
+                    <path class="angle-arc" />
+                    <text class="angle-text"></text>
+                    <text class="angle-text"></text>
+                </g>
+
+                <text id="person-label" x="0" y="0" class="text-label" text-anchor="middle">人</text>
+                <text id="mirror-label" x="0" y="0" class="text-label" text-anchor="middle">鏡子</text>
+            `;
+        }
+
+        // Helper function to draw angle arcs and text
+        function drawAngleArc(elements, center, angleRad, isIncidence, isTop) {
+            const [arcEl, textEl] = elements;
+            const arcRadius = 35;
+            const textRadius = 20;
+            const angleDeg = angleRad * 180 / Math.PI;
+
+            let startAngle, endAngle;
+            if (isIncidence) {
+                startAngle = Math.PI; // From normal (left)
+                endAngle = isTop ? Math.PI - angleRad : Math.PI + angleRad;
+            } else { // Reflection
+                startAngle = isTop ? angleRad : -angleRad;
+                endAngle = 0; // To normal (right)
+            }
+            
+            const start = { x: center.x + arcRadius * Math.cos(startAngle), y: center.y + arcRadius * Math.sin(startAngle) };
+            const end = { x: center.x + arcRadius * Math.cos(endAngle), y: center.y + arcRadius * Math.sin(endAngle) };
+            
+            const d = `M ${start.x} ${start.y} A ${arcRadius} ${arcRadius} 0 0 ${isIncidence ? 1 : 0} ${end.x} ${end.y}`;
+            arcEl.setAttribute('d', d);
+
+            const midAngle = (startAngle + endAngle) / 2;
+            textEl.setAttribute('x', center.x + textRadius * Math.cos(midAngle));
+            textEl.setAttribute('y', center.y + textRadius * Math.sin(midAngle));
+            textEl.textContent = `${angleDeg.toFixed(1)}°`;
+        }
+
+        function update() {
+            const personHeight = parseInt(personHeightSlider.value);
+            const distance = parseInt(distanceSlider.value);
+            const mirrorSize = parseInt(mirrorSizeSlider.value);
+            const mirrorBottom = parseInt(mirrorPositionSlider.value);
+            
+            personHeightValue.textContent = personHeight;
+            distanceValue.textContent = distance;
+            mirrorSizeValue.textContent = mirrorSize;
+            mirrorPositionValue.textContent = mirrorBottom;
+
+            const eyeLevel = personHeight - EYE_TO_TOP_CM;
+            const mirrorTop = mirrorBottom + mirrorSize;
+            
+            const personX = MIRROR_X + distance; 
+            const virtualPersonX = MIRROR_X - distance;
+
+            const topReflectionY = (personHeight + eyeLevel) / 2;
+            const bottomReflectionY = eyeLevel / 2;
+            const idealSize = topReflectionY - bottomReflectionY;
+            const idealPosition = bottomReflectionY;
+
+            const scale = (SVG_HEIGHT - 50) / 220;
+
+            // Update main elements
+            document.getElementById('person').setAttribute('d', `M${personX},${SVG_HEIGHT - personHeight * scale} L${personX},${SVG_HEIGHT}`);
+            document.getElementById('person').setAttribute('x1', personX);
+            document.getElementById('person').setAttribute('y1', SVG_HEIGHT - personHeight * scale);
+            document.getElementById('person').setAttribute('x2', personX);
+            document.getElementById('person').setAttribute('y2', SVG_HEIGHT);
+            document.getElementById('eye').setAttribute('cx', personX);
+            document.getElementById('eye').setAttribute('cy', SVG_HEIGHT - eyeLevel * scale);
+            document.getElementById('mirror').setAttribute('x1', MIRROR_X);
+            document.getElementById('mirror').setAttribute('y1', SVG_HEIGHT - mirrorTop * scale);
+            document.getElementById('mirror').setAttribute('x2', MIRROR_X);
+            document.getElementById('mirror').setAttribute('y2', SVG_HEIGHT - mirrorBottom * scale);
+            document.getElementById('virtual-person').setAttribute('x1', virtualPersonX);
+            document.getElementById('virtual-person').setAttribute('y1', SVG_HEIGHT - personHeight * scale);
+            document.getElementById('virtual-person').setAttribute('x2', virtualPersonX);
+            document.getElementById('virtual-person').setAttribute('y2', SVG_HEIGHT);
+            
+            // Update rays
+            document.getElementById('ray-top').setAttribute('d', `M ${personX},${SVG_HEIGHT - personHeight * scale} L ${MIRROR_X},${SVG_HEIGHT - topReflectionY * scale} L ${personX},${SVG_HEIGHT - eyeLevel * scale}`);
+            document.getElementById('ray-bottom').setAttribute('d', `M ${personX},${SVG_HEIGHT} L ${MIRROR_X},${SVG_HEIGHT - bottomReflectionY * scale} L ${personX},${SVG_HEIGHT - eyeLevel * scale}`);
+            document.getElementById('ray-top-virtual').setAttribute('d', `M ${MIRROR_X},${SVG_HEIGHT - topReflectionY * scale} L ${virtualPersonX},${SVG_HEIGHT - personHeight * scale}`);
+            document.getElementById('ray-bottom-virtual').setAttribute('d', `M ${MIRROR_X},${SVG_HEIGHT - bottomReflectionY * scale} L ${virtualPersonX},${SVG_HEIGHT}`);
+
+            // Update ray colors
+            const canSeeTop = topReflectionY <= mirrorTop && topReflectionY >= mirrorBottom;
+            const canSeeBottom = bottomReflectionY <= mirrorTop && bottomReflectionY >= mirrorBottom;
+            const topRayClass = canSeeTop ? 'ray-top-hit' : 'ray-miss';
+            const bottomRayClass = canSeeBottom ? 'ray-bottom-hit' : 'ray-miss';
+            ['ray-top', 'ray-top-virtual'].forEach(id => document.getElementById(id).setAttribute('class', id.includes('virtual') ? `ray-virtual ${topRayClass}` : `ray ${topRayClass}`));
+            ['ray-bottom', 'ray-bottom-virtual'].forEach(id => document.getElementById(id).setAttribute('class', id.includes('virtual') ? `ray-virtual ${bottomRayClass}` : `ray ${bottomRayClass}`));
+
+            // Update results text
+            if (canSeeTop && canSeeBottom) {
+                canSeeFullBodyText.textContent = "✔️ 當前設置可以看到全身！";
+                canSeeFullBodyText.className = 'success';
+            } else {
+                let message = "❌ 無法看到全身。";
+                if (!canSeeTop) message += " 看不到頭頂。";
+                if (!canSeeBottom) message += " 看不到腳。";
+                canSeeFullBodyText.textContent = message;
+                canSeeFullBodyText.className = 'failure';
+            }
+            idealMirrorSizeText.innerHTML = `理論上，所需鏡子最小尺寸為: <strong>${idealSize.toFixed(1)} cm</strong> (身高的一半)。`;
+            idealPositionText.innerHTML = `理論上，鏡子底部最佳離地高度為: <strong>${idealPosition.toFixed(1)} cm</strong> (眼睛高度的一半)。`;
+
+            // --- Calculate and Draw Angles ---
+            const topAngleGroup = document.getElementById('top-angle-group');
+            const bottomAngleGroup = document.getElementById('bottom-angle-group');
+
+            // Top reflection point
+            const topRefPoint = { x: MIRROR_X, y: SVG_HEIGHT - topReflectionY * scale };
+            const angleTopRad = Math.atan((personHeight - topReflectionY) * scale / distance);
+            topAngleGroup.querySelector('.normal-line').setAttribute('x1', MIRROR_X - 60);
+            topAngleGroup.querySelector('.normal-line').setAttribute('y1', topRefPoint.y);
+            topAngleGroup.querySelector('.normal-line').setAttribute('x2', MIRROR_X + 60);
+            topAngleGroup.querySelector('.normal-line').setAttribute('y2', topRefPoint.y);
+            drawAngleArc([topAngleGroup.children[1], topAngleGroup.children[3]], topRefPoint, angleTopRad, true, true);
+            drawAngleArc([topAngleGroup.children[2], topAngleGroup.children[4]], topRefPoint, angleTopRad, false, true);
+            
+            // Bottom reflection point
+            const bottomRefPoint = { x: MIRROR_X, y: SVG_HEIGHT - bottomReflectionY * scale };
+            const angleBottomRad = Math.atan(bottomReflectionY * scale / distance);
+            bottomAngleGroup.querySelector('.normal-line').setAttribute('x1', MIRROR_X - 60);
+            bottomAngleGroup.querySelector('.normal-line').setAttribute('y1', bottomRefPoint.y);
+            bottomAngleGroup.querySelector('.normal-line').setAttribute('x2', MIRROR_X + 60);
+            bottomAngleGroup.querySelector('.normal-line').setAttribute('y2', bottomRefPoint.y);
+            drawAngleArc([bottomAngleGroup.children[1], bottomAngleGroup.children[3]], bottomRefPoint, angleBottomRad, true, false);
+            drawAngleArc([bottomAngleGroup.children[2], bottomAngleGroup.children[4]], bottomRefPoint, angleBottomRad, false, false);
+            
+            // Update labels
+            document.getElementById('person-label').setAttribute('x', personX);
+            document.getElementById('person-label').setAttribute('y', SVG_HEIGHT - personHeight * scale - 15);
+            document.getElementById('mirror-label').setAttribute('x', MIRROR_X);
+            document.getElementById('mirror-label').setAttribute('y', SVG_HEIGHT - mirrorTop * scale - 15);
+        }
+
+        createElements();
+        update();
+
+        personHeightSlider.addEventListener('input', update);
+        distanceSlider.addEventListener('input', update);
+        mirrorSizeSlider.addEventListener('input', update);
+        mirrorPositionSlider.addEventListener('input', update);
+    </script>
+</body>
+</html>
